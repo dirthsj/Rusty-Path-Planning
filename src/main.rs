@@ -1,17 +1,16 @@
-use petgraph::graph::UnGraph;
-use petgraph::{Graph, Undirected};
-use petgraph::visit::Bfs;
-use petgraph::graph::NodeIndex;
 use petgraph::algo::astar;
+use petgraph::graph::NodeIndex;
+use petgraph::graph::UnGraph;
+use petgraph::visit::Bfs;
+use petgraph::{Graph, Undirected};
 
-use std::fs::File;
-use std::io::prelude::*;
+use std::fs::{read_to_string, write};
 use std::ops::Add;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use clap::{Arg, App};
+use clap::{App, Arg};
 
 #[macro_use]
 extern crate svgmacro;
@@ -21,45 +20,47 @@ fn main() -> std::io::Result<()> {
         .version("0.1.0")
         .author("Steven Dirth <steven@dirth.dev>")
         .about("Implements Simple Path Finding")
-        .arg(Arg::with_name("input")
-            .required(true)
-            .short("i")
-            .long("input")
-            .takes_value(true)
-            .help("The input configuration"))
-        .arg(Arg::with_name("json")
-            .required_unless("svg")
-            .short("j")
-            .long("json")
-            .takes_value(true)
-            .help("The json file to write results to"))
-        .arg(Arg::with_name("svg")
-            .required_unless("json")
-            .short("s")
-            .long("svg")
-            .takes_value(true)
-            .help("The svg file to write results to"))
+        .arg(
+            Arg::with_name("input")
+                .required(true)
+                .short("i")
+                .long("input")
+                .takes_value(true)
+                .help("The input configuration"),
+        )
+        .arg(
+            Arg::with_name("json")
+                .required_unless("svg")
+                .short("j")
+                .long("json")
+                .takes_value(true)
+                .help("The json file to write results to"),
+        )
+        .arg(
+            Arg::with_name("svg")
+                .required_unless("json")
+                .short("s")
+                .long("svg")
+                .takes_value(true)
+                .help("The svg file to write results to"),
+        )
         .get_matches();
 
     let input_str = matches.value_of("input").unwrap();
-    let mut file = File::open(input_str)?;
-    let mut str = String::new();
-    file.read_to_string(&mut str)?;
+    let str = read_to_string(input_str)?;
 
     let config = str_to_config(str);
     let g = make_graph(&config);
     let path = find_path(&g, config.start, config.goal);
 
-    if let Some(json_str) = matches.value_of("json") {
+    if let Some(json_path) = matches.value_of("json") {
         let json = graph_to_json(&g, &path);
-        let mut file = File::create(json_str)?;
-        file.write_all(json.as_ref())?;
+        write(json_path, json)?;
     }
 
-    if let Some(svg_str) = matches.value_of("svg") {
+    if let Some(svg_path) = matches.value_of("svg") {
         let svg = graph_to_svg(&g, 100, &config, config.start, config.goal, &path);
-        let mut file = File::create(svg_str)?;
-        file.write_all(svg.as_ref())?;
+        write(svg_path, svg)?;
     }
 
     Ok(())
@@ -87,7 +88,6 @@ impl Add for Coordinate {
         }
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 struct Config {
@@ -127,10 +127,17 @@ fn make_graph(config: &Config) -> Graph<Coordinate, i32, Undirected, u32> {
     g
 }
 
-fn graph_to_svg(g: &Graph<Coordinate, i32, Undirected, u32>, scale: i16, config: &Config, start: Coordinate, goal: Coordinate, path: &Option<(i32, Vec<NodeIndex>)>) -> String {
+fn graph_to_svg(
+    g: &Graph<Coordinate, i32, Undirected, u32>,
+    scale: i16,
+    config: &Config,
+    start: Coordinate,
+    goal: Coordinate,
+    path: &Option<(i32, Vec<NodeIndex>)>,
+) -> String {
     let field_width = config.width;
     let field_height = config.height;
-    let offset = scale/2;
+    let offset = scale / 2;
     use std::fmt::Write;
     let mut out = String::new();
     let mut bfs = Bfs::new(&g, g.node_indices().next().unwrap());
@@ -165,10 +172,11 @@ fn graph_to_svg(g: &Graph<Coordinate, i32, Undirected, u32>, scale: i16, config:
     out
 }
 
-fn graph_to_json(g: &Graph<Coordinate, i32, Undirected, u32>, path: &Option<(i32, Vec<NodeIndex>)>) -> String {
-    let nodes: Vec<Coordinate> = g.node_indices()
-        .map(|node_index| g[node_index])
-        .collect();
+fn graph_to_json(
+    g: &Graph<Coordinate, i32, Undirected, u32>,
+    path: &Option<(i32, Vec<NodeIndex>)>,
+) -> String {
+    let nodes: Vec<Coordinate> = g.node_indices().map(|node_index| g[node_index]).collect();
     let mut bfs = Bfs::new(&g, g.node_indices().next().unwrap());
     let mut edges = Vec::new();
     while let Some(nx) = bfs.next(g) {
@@ -180,29 +188,34 @@ fn graph_to_json(g: &Graph<Coordinate, i32, Undirected, u32>, path: &Option<(i32
             }
         }
     }
-    let out;
-    if let Some(path) = path {
-        out = json!({
+    let out = if let Some(path) = path {
+        json!({
             "nodes": nodes,
             "edges": edges,
             "path": path.1.iter().map(|x| g[*x]).collect::<Vec<Coordinate>>(),
-        });
+        })
     } else {
-        out = json!({
+        json!({
             "nodes": nodes,
             "edges": edges,
-        });
-    }
+        })
+    };
     serde_json::to_string(&out).unwrap()
 }
 
-fn find_path(g: &Graph<Coordinate, i32, Undirected, u32>, start: Coordinate, end: Coordinate) -> Option<(i32, Vec<NodeIndex>)> {
+fn find_path(
+    g: &Graph<Coordinate, i32, Undirected, u32>,
+    start: Coordinate,
+    end: Coordinate,
+) -> Option<(i32, Vec<NodeIndex>)> {
     if let Some(start_index) = g.node_indices().find(|x| g[*x] == start) {
-        return astar(g,
-                        start_index,
-                        |x: NodeIndex| g[x] == end,
-                        |_x| 1,
-                        |x| end.distance(g[x]));
+        return astar(
+            g,
+            start_index,
+            |x: NodeIndex| g[x] == end,
+            |_x| 1,
+            |x| end.distance(g[x]),
+        );
     }
     None
 }
