@@ -59,7 +59,7 @@ fn main() -> std::io::Result<()> {
     }
 
     if let Some(svg_path) = matches.value_of("svg") {
-        let svg = graph_to_svg(&g, 100, &config, config.start, config.goal, &path);
+        let svg = graph_to_svg(&g, config.scale, &config, config.start, config.goal, &path);
         write(svg_path, svg)?;
     }
 
@@ -95,6 +95,7 @@ struct Config {
     goal: Coordinate,
     height: i16,
     width: i16,
+    scale: i16,
 }
 
 fn make_graph(config: &Config) -> Graph<Coordinate, i32, Undirected, u32> {
@@ -160,11 +161,11 @@ fn graph_to_svg(
                     }
                 }
                 if coord == start {
-                    SVG!(&mut out, circle(cx={offset+scale*coord.x} cy={offset+scale*coord.y} r="10" style="stroke: rgb(255, 0, 0); fill: rgb(255, 0, 0)"));
+                    SVG!(&mut out, circle(cx={offset+scale*coord.x} cy={offset+scale*coord.y} r={scale/10} style="stroke: rgb(255, 0, 0); fill: rgb(255, 0, 0)"));
                 } else if coord == goal {
-                    SVG!(&mut out, circle(cx={offset+scale*coord.x} cy={offset+scale*coord.y} r="10" style="stroke: rgb(0, 0, 255); fill: rgb(0, 0, 255)"));
+                    SVG!(&mut out, circle(cx={offset+scale*coord.x} cy={offset+scale*coord.y} r={scale/10} style="stroke: rgb(0, 0, 255); fill: rgb(0, 0, 255)"));
                 } else {
-                    SVG!(&mut out, circle(cx={offset+scale*coord.x} cy={offset+scale*coord.y} r="5"));
+                    SVG!(&mut out, circle(cx={offset+scale*coord.x} cy={offset+scale*coord.y} r={scale/15}));
                 }
             };
     ]);
