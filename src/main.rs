@@ -15,6 +15,8 @@ use clap::{App, Arg};
 #[macro_use]
 extern crate svgmacro;
 
+type Undirected2DCoordinateGraph = Graph<Coordinate2D, i32, Undirected, u32>;
+
 fn main() -> std::io::Result<()> {
     let matches = App::new("My Test Program")
         .version("0.1.0")
@@ -67,18 +69,18 @@ fn main() -> std::io::Result<()> {
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Debug, PartialOrd, Default)]
-struct Coordinate {
+struct Coordinate2D {
     x: i16,
     y: i16,
 }
 
-impl Coordinate {
-    fn distance(self: Coordinate, other: Coordinate) -> i32 {
-        (((self.y - other.y).pow(2) + (self.x - self.y).pow(2)) as f32).sqrt() as i32
+impl Coordinate2D {
+    fn distance(self, other: Self) -> f32 {
+        (((self.y - other.y).pow(2) + (self.x - self.y).pow(2)) as f32).sqrt()
     }
 }
 
-impl Add for Coordinate {
+impl Add for Coordinate2D {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
@@ -91,14 +93,14 @@ impl Add for Coordinate {
 
 #[derive(Serialize, Deserialize)]
 struct Config {
-    start: Coordinate,
-    goal: Coordinate,
+    start: Coordinate2D,
+    goal: Coordinate2D,
     height: i16,
     width: i16,
     scale: i16,
 }
 
-fn make_graph(config: &Config) -> Graph<Coordinate, i32, Undirected, u32> {
+fn make_graph(config: &Config) -> Undirected2DCoordinateGraph {
     let field_height = config.height;
     let field_width = config.width;
     let node_count = field_height * field_width;
@@ -110,7 +112,7 @@ fn make_graph(config: &Config) -> Graph<Coordinate, i32, Undirected, u32> {
         let mut x = 0;
         let mut last_node = None;
         while x < field_width {
-            let current_node = g.add_node(Coordinate { x, y });
+            let current_node = g.add_node(Coordinate2D { x, y });
 
             if last_node_line[x as usize].is_some() {
                 g.add_edge(current_node, last_node_line[x as usize].unwrap(), 1);
@@ -129,11 +131,11 @@ fn make_graph(config: &Config) -> Graph<Coordinate, i32, Undirected, u32> {
 }
 
 fn graph_to_svg(
-    g: &Graph<Coordinate, i32, Undirected, u32>,
+    g: &Undirected2DCoordinateGraph,
     scale: i16,
     config: &Config,
-    start: Coordinate,
-    goal: Coordinate,
+    start: Coordinate2D,
+    goal: Coordinate2D,
     path: &Option<(i32, Vec<NodeIndex>)>,
 ) -> String {
     let field_width = config.width;
@@ -173,15 +175,12 @@ fn graph_to_svg(
     out
 }
 
-fn graph_to_json(
-    g: &Graph<Coordinate, i32, Undirected, u32>,
-    path: &Option<(i32, Vec<NodeIndex>)>,
-) -> String {
-    let nodes: Vec<Coordinate> = g.node_indices().map(|node_index| g[node_index]).collect();
+fn graph_to_json(g: &Undirected2DCoordinateGraph, path: &Option<(i32, Vec<NodeIndex>)>) -> String {
+    let nodes: Vec<Coordinate2D> = g.node_indices().map(|node_index| g[node_index]).collect();
     let mut bfs = Bfs::new(&g, g.node_indices().next().unwrap());
     let mut edges = Vec::new();
     while let Some(nx) = bfs.next(g) {
-        let coord: Coordinate = g[nx];
+        let coord: Coordinate2D = g[nx];
         for neighbor in g.neighbors(nx) {
             let ncoord = g[neighbor];
             if !edges.contains(&(ncoord, coord)) {
@@ -193,7 +192,7 @@ fn graph_to_json(
         json!({
             "nodes": nodes,
             "edges": edges,
-            "path": path.1.iter().map(|x| g[*x]).collect::<Vec<Coordinate>>(),
+            "path": path.1.iter().map(|x| g[*x]).collect::<Vec<Coordinate2D >>(),
         })
     } else {
         json!({
@@ -205,9 +204,9 @@ fn graph_to_json(
 }
 
 fn find_path(
-    g: &Graph<Coordinate, i32, Undirected, u32>,
-    start: Coordinate,
-    end: Coordinate,
+    g: &Undirected2DCoordinateGraph,
+    start: Coordinate2D,
+    end: Coordinate2D,
 ) -> Option<(i32, Vec<NodeIndex>)> {
     if let Some(start_index) = g.node_indices().find(|x| g[*x] == start) {
         return astar(
@@ -215,7 +214,7 @@ fn find_path(
             start_index,
             |x: NodeIndex| g[x] == end,
             |_x| 1,
-            |x| end.distance(g[x]),
+            |x| end.distance(g[x]).floor() as i32,
         );
     }
     None
